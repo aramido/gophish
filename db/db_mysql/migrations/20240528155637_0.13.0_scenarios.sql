@@ -9,7 +9,6 @@ CREATE TABLE scenarios (
     `page_id` BIGINT,
     `url` VARCHAR(255)
 );
-ALTER TABLE scenarios ADD COLUMN campaign_id BIGINT NULL;
 
 CREATE TABLE scenario_templates (
     `scenario_id` INTEGER,
@@ -27,7 +26,7 @@ ALTER TABLE mail_logs ADD COLUMN template_id INTEGER;
 ALTER TABLE mail_logs ADD COLUMN scenario_id INTEGER;
 
 -- Insert data into 'scenarios' table based on the 'campaigns' table
-INSERT INTO scenarios (campaign_id, user_id, name, description, created_date, page_id, url)
+INSERT INTO scenarios (id, user_id, name, description, created_date, page_id, url)
 SELECT id, user_id, name, 'Auto-generated from campaigns', created_date, page_id, url
 FROM campaigns;
 
@@ -35,13 +34,13 @@ FROM campaigns;
 INSERT INTO scenario_templates (scenario_id, template_id)
 SELECT s.id, c.template_id
 FROM campaigns c
-JOIN scenarios s ON s.campaign_id = c.id;
+JOIN scenarios s ON s.id = c.id;
 
 -- Insert data into 'campaign_scenarios' table for campaign-scenario relationships
 INSERT INTO campaign_scenarios (campaign_id, scenario_id)
 SELECT c.id, s.id
 FROM campaigns c
-JOIN scenarios s ON s.campaign_id = c.id;
+JOIN scenarios s ON s.id = c.id;
 
 -- Populate 'scenario_id' in 'results' based on 'campaign_scenarios'
 UPDATE results
@@ -76,7 +75,6 @@ SET template_id = (
     JOIN campaign_scenarios cs ON st.scenario_id = cs.scenario_id
     WHERE cs.campaign_id = mail_logs.campaign_id
 );
-ALTER TABLE scenarios DROP COLUMN campaign_id;
 
 -- +goose Down
 DROP TABLE scenarios;

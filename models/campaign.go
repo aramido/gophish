@@ -5,8 +5,8 @@ import (
 	"math"
 	"math/rand"
 	"net/url"
-	"time"
 	"sort"
+	"time"
 
 	log "github.com/gophish/gophish/logger"
 	"github.com/gophish/gophish/webhook"
@@ -237,7 +237,7 @@ func (c *Campaign) getDetails() error {
 		log.Warnf("%s: events not found for campaign", err)
 		return err
 	}
-	err = db.Preload("Scenarios.Templates").Preload("Scenarios.Templates.Attachments").First(&c, c.Id).Error
+	err = db.Preload("Scenarios.Templates").Preload("Scenarios.Templates.Attachments").Preload("Scenarios.Page").First(&c, c.Id).Error
 	if err != nil {
 		log.Warnf("%s: scenarios not found for campaign", err)
 		return err
@@ -364,8 +364,8 @@ func (c *Campaign) generateTimeSlots(totalRecipients int) []time.Time {
 	}
 	// Sort timeSlots
 	sort.Slice(timeSlots, func(i, j int) bool {
-        return timeSlots[i].Before(timeSlots[j])
-    })
+		return timeSlots[i].Before(timeSlots[j])
+	})
 	// Return the timeSlots so that they can be used
 	return timeSlots
 }
@@ -459,7 +459,7 @@ func GetCampaignSummaries(uid int64) (CampaignSummaries, error) {
 	for i := range campaigns {
 		c := CampaignSummary{
 			Id:            campaigns[i].Id,
-			UserId:		   campaigns[i].UserId,
+			UserId:        campaigns[i].UserId,
 			CreatedDate:   campaigns[i].CreatedDate,
 			LaunchDate:    campaigns[i].LaunchDate,
 			SendByDate:    campaigns[i].SendByDate,
@@ -497,7 +497,7 @@ func GetCampaignSummary(id int64, uid int64) (CampaignSummary, error) {
 
 	cs = CampaignSummary{
 		Id:            campaign.Id,
-		UserId:		   campaign.UserId,
+		UserId:        campaign.UserId,
 		CreatedDate:   campaign.CreatedDate,
 		LaunchDate:    campaign.LaunchDate,
 		SendByDate:    campaign.SendByDate,
@@ -766,7 +766,7 @@ func PostCampaign(c *Campaign, uid int64) error {
 			}
 		}
 		recipients[recipient] = &Recipient{
-			Recipient: recipient,
+			Recipient:   recipient,
 			Assignments: assignments,
 		}
 	}

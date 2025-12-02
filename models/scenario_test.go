@@ -1,8 +1,8 @@
 package models
 
 import (
-	"testing"
 	"gopkg.in/check.v1"
+	"testing"
 )
 
 func setupScenarioDependencies(b *testing.B) {
@@ -33,7 +33,7 @@ func setupScenario(b *testing.B) Scenario {
 	scenario.UserId = 1
 	scenario.Templates = append(scenario.Templates, Template{Id: 1})
 	scenario.Page = Page{Id: 1}
-	scenario.URL = "localhost"
+	scenario.URL = "http://localhost.localdomain"
 	PostScenario(&scenario, 1)
 	return scenario
 }
@@ -95,9 +95,8 @@ func (s *ModelsSuite) TestScenarioValidation(c *check.C) {
 	// Validate that a URL is required
 	err = sc.Validate()
 	c.Assert(err, check.Equals, ErrURLNotSpecified)
-	sc.URL = "localhost"
+	sc.URL = "http://localhost.localdomain"
 
 	err = sc.Validate()
 	c.Assert(err, check.Equals, nil)
 }
-

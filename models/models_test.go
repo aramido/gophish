@@ -96,7 +96,12 @@ func (s *ModelsSuite) createScenarioDependencies(ch *check.C, optional ...string
 	p.UserId = 1
 	ch.Assert(PostPage(&p), check.Equals, nil)
 
-	sc := Scenario{UserId: 1, Name: "Test", Description: "Test", Templates: append([]Template{}, t), Page: p, URL: "localhost"}
+	sc := Scenario{Name: "Test"}
+	sc.UserId = 1
+	sc.Description = "Test"
+	sc.Templates = append([]Template{}, t)
+	sc.Page = p
+	sc.URL = "http://localhost.localdomain"
 
 	return sc
 }

@@ -110,7 +110,7 @@ func (s *ModelsSuite) TestDuplicateResults(ch *check.C) {
 	scenario := Scenario{UserId: 1, Name: "Test", Description: "Test"}
 	scenario.Templates = append([]Template{}, t)
 	scenario.Page = p
-	scenario.URL = "localhost"
+	scenario.URL = "http://localhost.localdomain1"
 	ch.Assert(PostScenario(&scenario, 1), check.Equals, nil)
 
 	c := Campaign{Name: "Test campaign"}
@@ -121,6 +121,23 @@ func (s *ModelsSuite) TestDuplicateResults(ch *check.C) {
 
 	ch.Assert(PostCampaign(&c, c.UserId), check.Equals, nil)
 	ch.Assert(len(c.Results), check.Equals, 2)
-	ch.Assert(c.Results[0].Email, check.Equals, group.Targets[0].Email)
-	ch.Assert(c.Results[1].Email, check.Equals, group.Targets[2].Email)
+
+	// Since the order of Results dont match the order of Targets we do a explicit check
+	// Ensure no duplicate emails in results
+	seen := map[string]bool{}
+	for _, r := range c.Results {
+		ch.Assert(seen[r.Email], check.Equals, false)
+		seen[r.Email] = true
+	}
+
+	// Ensure they are exactly the two expected emails
+	expected := map[string]bool{
+		group.Targets[0].Email: true, // test1@example.com
+		group.Targets[2].Email: true, // test2@example.com
+	}
+
+	for _, r := range c.Results {
+		_, ok := expected[r.Email]
+		ch.Assert(ok, check.Equals, true)
+	}
 }

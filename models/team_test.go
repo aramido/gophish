@@ -135,7 +135,7 @@ func (s *ModelsSuite) TestRelateItemsAndTeam(c *check.C) {
 	scenario := Scenario{UserId: 1, Name: "Test", Description: "Test"}
 	scenario.Templates = append([]Template{}, template)
 	scenario.Page = page
-	scenario.URL = "localhost"
+	scenario.URL = "http://localhost.localdomain"
 	c.Assert(PostScenario(&scenario, 1), check.Equals, nil)
 
 	// Create the Campaign

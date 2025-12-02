@@ -113,8 +113,12 @@ func createTestData(t *testing.T) {
 	smtp.FromAddress = "test@test.com"
 	models.PostSMTP(&smtp)
 
-	scenario := models.Scenario{UserId: 1, Name: "Test", Description: "Test", Templates: append([]models.Template{}, template), Page: p}
-	scenario.URL = "localhost"
+	scenario := models.Scenario{Name: "Test"}
+	scenario.UserId = 1
+	scenario.Description = "Test"
+	scenario.Templates = append([]models.Template{}, template)
+	scenario.Page = p
+	scenario.URL = "http://localhost.localdomain"
 	models.PostScenario(&scenario, 1)
 
 	// Setup and "launch" our campaign

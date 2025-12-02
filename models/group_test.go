@@ -46,7 +46,7 @@ func (s *ModelsSuite) TestGetGroups(c *check.C) {
 		UserId: 1,
 	})
 	c.Assert(err, check.Equals, nil)
-	err := PostGroup(&Group{
+	err = PostGroup(&Group{
 		Name: "Test Group 2",
 		Targets: []Target{
 			{

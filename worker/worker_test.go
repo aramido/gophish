@@ -71,7 +71,7 @@ func createTestData(t *testing.T, ctx *testContext) {
 	models.PostPage(&p)
 
 	scenario := models.Scenario{UserId: 1, Name: "Redirect Scenario", Description: "Redirect Scenario", Templates: append([]models.Template{}, template), Page: p}
-	scenario.URL = "localhost"
+	scenario.URL = "http://localhost.localdomain"
 	models.PostScenario(&scenario, 1)
 
 	// Add a sending profile

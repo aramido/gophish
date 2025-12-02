@@ -53,7 +53,7 @@ func (s *Scenario) getBaseURL() string {
 
 // Validate checks to make sure there are no invalid fields in a submitted campaign
 func (s *Scenario) Validate() error {
-	temp, _ := regexp.MatchString(`https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)`, s.URL)
+	temp, _ := regexp.MatchString(`https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,12}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)`, s.URL)
 	switch {
 	case s.Name == "":
 		return ErrScenarioNameNotSpecified

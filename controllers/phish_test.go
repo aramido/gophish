@@ -19,7 +19,6 @@ func getFirstCampaign(t *testing.T) models.Campaign {
 	if err != nil {
 		t.Fatalf("error getting first campaign from database: %v", err)
 	}
-	fmt.Println("Campaigns", campaigns[0])
 	return campaigns[0]
 }
 
@@ -379,7 +378,7 @@ func TestRedirectTemplating(t *testing.T) {
 	group, _ := models.GetGroup(1, 1)
 
 	scenario := models.Scenario{UserId: 1, Name: "Redirect Scenario", Description: "Redirect Scenario", Templates: append([]models.Template{}, template), Page: p}
-	scenario.URL = "localhost"
+	scenario.URL = "http://localhost.localdomain"
 	models.PostScenario(&scenario, 1)
 
 	campaign := models.Campaign{Name: "Redirect campaign"}

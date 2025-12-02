@@ -72,7 +72,7 @@ func (as *Server) Template(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET":
 		JSONResponse(w, t, http.StatusOK)
 	case r.Method == "DELETE":
-		if models.GetTemplateScenariosCount(id) >= 1{
+		if models.GetTemplateScenariosCount(id) >= 1 {
 			JSONResponse(w, models.Response{Success: false, Message: "Cant delete template since it is still attached to at least one scenario"}, http.StatusUnprocessableEntity)
 			return
 		}

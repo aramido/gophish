@@ -64,7 +64,7 @@ func (as *Server) Scenario(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET":
 		JSONResponse(w, s, http.StatusOK)
 	case r.Method == "DELETE":
-		if models.GetScenarioCampaignsCount(id) >= 1{
+		if models.GetScenarioCampaignsCount(id) >= 1 {
 			JSONResponse(w, models.Response{Success: false, Message: "Cant delete scenario since it is still attached to at least one campaign"}, http.StatusUnprocessableEntity)
 			return
 		}

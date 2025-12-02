@@ -140,7 +140,7 @@ func DeleteUser(id int64) error {
 	}
 	for _, page := range pages {
 		if page.UserId == id {
-			if (GetPageScenariosCount(page.Id) >= 1){
+			if GetPageScenariosCount(page.Id) >= 1 {
 				return ErrAttached
 			}
 			err = DeletePage(page.Id, id)
@@ -157,7 +157,7 @@ func DeleteUser(id int64) error {
 	}
 	for _, template := range templates {
 		if template.UserId == id {
-			if (GetTemplateScenariosCount(template.Id) >= 1){
+			if GetTemplateScenariosCount(template.Id) >= 1 {
 				return ErrAttached
 			}
 			err = DeleteTemplate(template.Id, id)
@@ -174,7 +174,7 @@ func DeleteUser(id int64) error {
 	}
 	for _, scenario := range scenarios {
 		if scenario.UserId == id {
-			if (GetScenarioCampaignsCount(scenario.Id) >= 1){
+			if GetScenarioCampaignsCount(scenario.Id) >= 1 {
 				return ErrAttached
 			}
 			err = DeleteScenario(scenario.Id)
@@ -205,7 +205,7 @@ func DeleteUser(id int64) error {
 	}
 	for _, profile := range profiles {
 		if profile.UserId == id {
-			if (GetSMTPCampaignCount(profile.Id) >= 1){
+			if GetSMTPCampaignCount(profile.Id) >= 1 {
 				return ErrAttached
 			}
 			err = DeleteSMTP(profile.Id, id)

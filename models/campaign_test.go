@@ -355,7 +355,7 @@ func setupCampaignDependencies(b *testing.B, size int) {
 
 	// Add a scenario
 	s := Scenario{UserId: 1, Name: "Test Scenario", Description: "Test"}
-	s.URL = "localhost"
+	s.URL = "http://localhost.localdomain"
 	s.UserId = 1
 	s.Templates = append(s.Templates, template)
 	s.Page = p
