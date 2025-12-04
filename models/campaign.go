@@ -34,6 +34,7 @@ type Campaign struct {
 	Teams         []TeamSummary `json:"teams" gorm:"-"`
 	StartTime     time.Time     `json:"start_time"`
 	EndTime       time.Time     `json:"end_time"`
+	Location  	  string		`json:"location"`
 }
 
 // CampaignResults is a struct representing the results from a campaign
@@ -284,11 +285,22 @@ func (c *Campaign) assignSendDate(idx int, timeSlots []time.Time) time.Time {
 	return timeSlots[idx]
 }
 
+// helper function for time location
+func (c *Campaign) resolveLoc() *time.Location {
+    if c.Location != "" {
+        if l, err := time.LoadLocation(c.Location); err == nil {
+            return l
+        }
+    }
+    return time.UTC
+}
+
 // Generates timeSlots. When timeSlots are generated the startHour and endHour defined at Campaign creation is ignored, but instead only whole days between 9 to 5 are regarded.
 func (c *Campaign) generateTimeSlots(totalRecipients int) []time.Time {
+	location := c.resolveLoc()
 	// For future proofing i added the startDate and endDate. Should they change the parameter c.LaunchDate or c.SendByDate we only need to edit it here.
-	startDate := time.Date(c.LaunchDate.Local().Year(), c.LaunchDate.Local().Month(), c.LaunchDate.Local().Day(), 0, 0, 0, 0, time.Local)
-	endDate := time.Date(c.SendByDate.Local().Year(), c.SendByDate.Local().Month(), c.SendByDate.Local().Day(), 0, 0, 0, 0, time.Local)
+	startDate := time.Date(c.LaunchDate.Year(), c.LaunchDate.Month(), c.LaunchDate.Day(), 0, 0, 0, 0, location)
+	endDate := time.Date(c.SendByDate.Year(), c.SendByDate.Month(), c.SendByDate.Day(), 0, 0, 0, 0, location)
 	// Calculate the duration of each day in which we can send Emails
 	durationPerDay := c.EndTime.Sub(c.StartTime)
 
@@ -338,7 +350,7 @@ func (c *Campaign) generateTimeSlots(totalRecipients int) []time.Time {
 	for date, count := range recipientsCountByDate {
 		// Set the first time for the day
 		currentTime := date.Add(time.Duration(c.StartTime.Hour()) * time.Hour)
-		endTime := time.Date(currentTime.Year(), currentTime.Month(), currentTime.Day(), c.EndTime.Hour(), 0, 0, 0, time.Local)
+		endTime := time.Date(currentTime.Year(), currentTime.Month(), currentTime.Day(), c.EndTime.Hour(), 0, 0, 0, location)
 
 		// Calculate the offset between each recipients in seconds
 		offset := float64(durationPerDay) / float64(count) // offset as float in h
@@ -645,26 +657,27 @@ func PostCampaign(c *Campaign, uid int64) error {
 	c.CreatedDate = time.Now().UTC()
 	c.CompletedDate = time.Time{}
 	c.Status = CampaignQueued
+	location := c.resolveLoc()
 	if c.LaunchDate.IsZero() {
 		c.LaunchDate = c.CreatedDate
 	} else {
-		c.LaunchDate = c.LaunchDate.UTC()
+		c.LaunchDate = c.LaunchDate.In(location)
 	}
 	if !c.SendByDate.IsZero() {
-		c.SendByDate = c.SendByDate.UTC()
+		c.SendByDate = c.SendByDate.In(location)
 	}
 	if c.LaunchDate.Before(c.CreatedDate) || c.LaunchDate.Equal(c.CreatedDate) {
 		c.Status = CampaignInProgress
 	}
 	if c.StartTime.IsZero() {
-		c.StartTime = time.Date(c.LaunchDate.Local().Year(), c.LaunchDate.Local().Month(), c.LaunchDate.Local().Day(), 9, 0, 0, 0, time.Local)
+		c.StartTime = time.Date(c.LaunchDate.Year(), c.LaunchDate.Month(), c.LaunchDate.Day(), 10, 0, 0, 0, location).UTC()
 	} else {
-		c.StartTime = c.StartTime.UTC()
+		c.StartTime = c.StartTime.In(location)
 	}
 	if c.EndTime.IsZero() {
-		c.EndTime = time.Date(c.LaunchDate.Local().Year(), c.LaunchDate.Local().Month(), c.LaunchDate.Local().Day(), 17, 0, 0, 0, time.Local)
+		c.EndTime = time.Date(c.LaunchDate.Year(), c.LaunchDate.Month(), c.LaunchDate.Day(), 18, 0, 0, 0, location).UTC()
 	} else {
-		c.EndTime = c.EndTime.UTC()
+		c.EndTime = c.EndTime.In(location)
 	}
 	// Check to make sure all the groups already exist
 

@@ -13,6 +13,21 @@ var campaign = {}
 var teams = []
 var item_type = "campaigns"
 
+const getDateISO = (selector, { format = "MMMM Do YYYY", endOfDay = false } = {}) => {
+  const value = $(selector).val();
+  if (!value) return null;
+
+  const m = moment.utc(value, format);
+  return (endOfDay ? m.endOf("day") : m.startOf("day")).toISOString();
+};
+
+const getTimeISO = (selector, { format = "h:mm a" } = {}) => {
+  const value = $(selector).val();
+  if (!value) return null;
+
+  return moment.utc(value, format).format("2000-01-01[T]HH:mm:ss[Z]");
+};
+
 // Launch attempts to POST to /campaigns/
 function launch() {
     Swal.fire({
@@ -34,21 +49,6 @@ function launch() {
                         id: parseInt(group.id)
                     });
                 })
-                // Validate our fields
-                var send_by_date = $("#send_by_date").val()
-                if (send_by_date != "") {
-                    send_by_date = moment(send_by_date, "MMMM Do YYYY, h:mm a").utc().format()
-                }
-
-                var start_time = $("#start_time").val()
-                if (start_time != "") {
-                    start_time = moment($("#start_time").val(), "h:mm a").utc().format()
-                }
-
-                var end_time = $("#end_time").val()
-                if (end_time != ""){
-                    end_time = moment($("#end_time").val(), "h:mm a").utc().format()
-                }
 
                 var selected = $("#scenario").select2("data")
                 var scenarios = []
@@ -62,11 +62,12 @@ function launch() {
                     smtp: {
                         id: parseInt($("#profile").select2("data")[0].id)
                     },
-                    launch_date: moment($("#launch_date").val(), "MMMM Do YYYY, h:mm a").utc().format(),
-                    send_by_date: send_by_date || null,
+                    launch_date: getDateISO("#launch_date"),
+                    send_by_date: getDateISO("#send_by_date", { endOfDay: true }) || null,
                     groups: groups,
-                    start_time : start_time || null,
-                    end_time : end_time || null,
+                    start_time : getTimeISO("#start_time") || null,
+                    end_time : getTimeISO("#end_time") || null,
+                    location : $("#timezone").val() || "UTC"
                 }
                 // Submit the campaign
                 api.campaigns.post(campaign)
@@ -257,6 +258,28 @@ function setupOptions() {
                 }
             }
         });
+    const select = document.getElementById("timezone");
+    if (!select) return;
+
+    // Try to detect user's local timezone
+    const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    const timezones = Intl.supportedValuesOf 
+        ? Intl.supportedValuesOf("timeZone")
+        : [
+            "UTC","Europe/London","Europe/Berlin","Europe/Paris",
+            "Asia/Shanghai","Asia/Tokyo","Asia/Singapore",
+            "America/New_York","America/Chicago","America/Los_Angeles",
+            "Australia/Sydney"
+            ];
+
+    timezones.forEach(tz => {
+        const opt = document.createElement("option");
+        opt.value = tz;
+        opt.textContent = tz;
+        if (tz === localTz) opt.selected = true;
+        select.appendChild(opt);
+    });
 }
 
 function edit(campaign) {
