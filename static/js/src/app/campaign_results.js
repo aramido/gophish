@@ -724,27 +724,24 @@ function poll() {
         })
 }
 
-function checkUser(id) {
-    api.campaignId.get(id)
-        .success(function (c) {
-            api.user.current().success(function (u) {
-                var permissions = {
-                    canDelete : false,
-                    canEdit : false,
-                };
-                permissions = CheckTeam(c.teams, u)
+function checkUser() {
+        api.user.current().success(function (u) {
+            var permissions = {
+                canDelete : false,
+                canEdit : false,
+            };
+            permissions = CheckTeam(campaign.teams, u)
 
-                var isOwner = false;
-                if (u.id == c.user_id){
-                    var isOwner = true;
-                }
-                if (!(isOwner || permissions.canDelete)){
-                    $('#delete_button')[0].disabled = true;
-                }
-                if (!(isOwner || permissions.canEdit)){
-                    $('#complete_button')[0].disabled = true;
-                }
-            })
+            var isOwner = false;
+            if (u.id == campaign.user_id){
+                var isOwner = true;
+            }
+            if (!(isOwner || permissions.canDelete)){
+                $('#delete_button')[0].disabled = true;
+            }
+            if (!(isOwner || permissions.canEdit)){
+                $('#complete_button')[0].disabled = true;
+            }
         })
         .error(function () {
             $("#loading").hide()
@@ -755,8 +752,7 @@ function checkUser(id) {
 function load() {
     campaign.id = window.location.pathname.split('/').slice(-1)[0]
     var use_map = JSON.parse(localStorage.getItem('gophish.use_map'))
-    checkUser(campaign.id)
-    api.campaignId.results(campaign.id)
+    api.campaignId.get(campaign.id)
         .success(function (c) {
                 campaign = c
                 if (campaign) {
@@ -770,6 +766,7 @@ function load() {
                         $('#complete_button').text('Completed!');
                         doPoll = false;
                     }
+                    checkUser()
                     // Setup viewing the details of a result
                     $("#resultsTable").on("click", ".timeline-event-details", function () {
                         // Show the parameters
