@@ -8,6 +8,33 @@ import (
 	check "gopkg.in/check.v1"
 )
 
+func assertSlotsWithinWindow(
+	c *check.C,
+	slots []time.Time,
+	loc *time.Location,
+	launch, sendBy time.Time,
+	startHour, endHour int,
+) {
+	startDate := time.Date(launch.Year(), launch.Month(), launch.Day(), 0, 0, 0, 0, loc)
+	endDate := time.Date(sendBy.Year(), sendBy.Month(), sendBy.Day(), 23, 59, 59, 0, loc)
+
+	for _, ts := range slots {
+		local := ts.In(loc)
+
+		// No weekends.
+		weekday := local.Weekday()
+		c.Assert(weekday == time.Saturday || weekday == time.Sunday, check.Equals, false)
+
+		// Within the date range [launch, sendBy].
+		c.Assert(!local.Before(startDate), check.Equals, true)
+		c.Assert(!local.After(endDate), check.Equals, true)
+
+		// Within working hours [startHour, endHour] local time.
+		hour := local.Hour()
+		c.Assert(hour >= startHour && hour <= endHour, check.Equals, true)
+	}
+}
+
 func (s *ModelsSuite) TestGenerateSendDate(c *check.C) {
 	campaign := s.createCampaignDependencies(c)
 	// Test that if no launch date is provided, the campaign's creation date
@@ -114,6 +141,14 @@ func (s *ModelsSuite) TestGenerateTimeSlots(c *check.C) {
 	ms, err = GetMailLogsByCampaign(campaign.Id)
 	c.Assert(err, check.Equals, nil)
 	c.Assert(len(ms), check.Equals, len(campaign.Scenarios)*len(recipientList))
+
+	// Check if Timeslots are in the expected Window
+	loc := time.UTC
+	var slots []time.Time
+	for _, m := range ms {
+		slots = append(slots, m.SendDate)
+	}
+	assertSlotsWithinWindow(c, slots, loc, campaign.LaunchDate, campaign.SendByDate, 9, 17)
 }
 
 func (s *ModelsSuite) TestCampaignDateValidation(c *check.C) {
@@ -319,6 +354,88 @@ func (s *ModelsSuite) TestCampaignGetResults(c *check.C) {
 	got, err := GetCampaign(campaign.Id, campaign.UserId)
 	c.Assert(err, check.Equals, nil)
 	c.Assert(len(campaign.Results), check.Equals, len(got.Results))
+}
+
+func (s *ModelsSuite) TestCampaignResolveLoc(c *check.C) {
+	var campaign Campaign
+
+	// Empty Location -> fallback to UTC
+	loc := campaign.resolveLoc()
+	c.Assert(loc, check.NotNil)
+	c.Assert(loc.String(), check.Equals, "UTC")
+
+	// Invalid Location -> fallback to UTC
+	campaign.Location = "Not/AZone"
+	loc = campaign.resolveLoc()
+	c.Assert(loc, check.NotNil)
+	c.Assert(loc.String(), check.Equals, "UTC")
+
+	// Valid IANA timezone -> returned as-is
+	campaign.Location = "Europe/Berlin"
+	loc = campaign.resolveLoc()
+	c.Assert(loc, check.NotNil)
+	c.Assert(loc.String(), check.Equals, "Europe/Berlin")
+}
+
+func (s *ModelsSuite) TestPostCampaignAppliesTimezoneToDates(c *check.C) {
+	campaign := s.createCampaignDependencies(c)
+	campaign.Location = "Europe/Berlin"
+
+	loc, err := time.LoadLocation("Europe/Berlin")
+	c.Assert(err, check.IsNil)
+
+	// fixed date so the test is stable
+	launch := time.Date(2030, time.January, 2, 9, 0, 0, 0, loc)
+	sendBy := launch.AddDate(0, 0, 2)
+
+	campaign.LaunchDate = launch
+	campaign.SendByDate = sendBy
+
+	err = PostCampaign(&campaign, campaign.UserId)
+	c.Assert(err, check.IsNil)
+
+	stored, err := GetCampaign(campaign.Id, campaign.UserId)
+	c.Assert(err, check.IsNil)
+
+	c.Assert(stored.Location, check.Equals, "Europe/Berlin")
+
+	// Launch / SendBy should represent the same instants in time
+	c.Assert(stored.LaunchDate.Equal(launch), check.Equals, true)
+	if !stored.SendByDate.IsZero() {
+		c.Assert(stored.SendByDate.Equal(sendBy), check.Equals, true)
+	}
+
+	startLocal := stored.StartTime.In(loc)
+	endLocal := stored.EndTime.In(loc)
+
+	c.Assert(startLocal.Year(), check.Equals, launch.Year())
+	c.Assert(startLocal.Month(), check.Equals, launch.Month())
+	c.Assert(startLocal.Day(), check.Equals, launch.Day())
+
+	c.Assert(endLocal.Year(), check.Equals, launch.Year())
+	c.Assert(endLocal.Month(), check.Equals, launch.Month())
+	c.Assert(endLocal.Day(), check.Equals, launch.Day())
+}
+
+func (s *ModelsSuite) TestGenerateTimeSlotsRespectsLocation(c *check.C) {
+	loc, err := time.LoadLocation("Europe/Berlin")
+	c.Assert(err, check.Equals, nil)
+
+	launch := time.Date(2030, time.January, 1, 0, 0, 0, 0, loc)
+	sendBy := time.Date(2030, time.January, 5, 0, 0, 0, 0, loc)
+
+	campaign := Campaign{
+		LaunchDate: launch,
+		SendByDate: sendBy,
+		StartTime: time.Date(launch.Year(), launch.Month(), launch.Day(), 9, 0, 0, 0, time.UTC),
+		EndTime:   time.Date(sendBy.Year(), sendBy.Month(), sendBy.Day(), 17, 0, 0, 0, time.UTC),
+		Location:  "Europe/Berlin",
+	}
+
+	totalRecipients := 20
+	slots := campaign.generateTimeSlots(totalRecipients)
+	
+	assertSlotsWithinWindow(c, slots, loc, launch, sendBy, 9, 17)
 }
 
 func setupCampaignDependencies(b *testing.B, size int) {
