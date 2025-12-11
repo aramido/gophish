@@ -403,7 +403,7 @@ func (as *AdminServer) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		// Validate the user's password (always run bcrypt to keep timing the same)
 		err = auth.ValidatePassword(password, hashToCheck)
-		if user_exists == false || err != nil {
+		if user_exists || err != nil {
 			log.Error(err)
 			as.handleInvalidLogin(w, r, "Invalid Username/Password")
 			return
