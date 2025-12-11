@@ -390,17 +390,20 @@ func (as *AdminServer) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		template.Must(templates, err).ExecuteTemplate(w, "base", params)
 	case r.Method == "POST":
+		hashToCheck := "$2a$12$rys97sC1LI/jT0b8L5z5G.Fkh9iMzwJ6hXsoTl.g1OhIxQe8nM8Ve"
+		user_exists := false
 		// Find the user with the provided username
 		username, password := r.FormValue("username"), r.FormValue("password")
 		u, err := models.GetUserByUsername(username)
-		if err != nil {
+		if err == nil {
+			user_exists = true
+			hashToCheck = u.Hash
+		} else {
 			log.Error(err)
-			as.handleInvalidLogin(w, r, "Invalid Username/Password")
-			return
 		}
-		// Validate the user's password
-		err = auth.ValidatePassword(password, u.Hash)
-		if err != nil {
+		// Validate the user's password (always run bcrypt to keep timing the same)
+		err = auth.ValidatePassword(password, hashToCheck)
+		if !user_exists || err != nil {
 			log.Error(err)
 			as.handleInvalidLogin(w, r, "Invalid Username/Password")
 			return
