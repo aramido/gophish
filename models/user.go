@@ -220,6 +220,18 @@ func DeleteUser(id int64) error {
 }
 
 func (u *User) IsOwnerOfItem(iid int64, item string) (bool, error) {
+	// Whitelist allowed table names
+	allowedTables := map[string]bool{
+		"campaigns": true,
+		"groups":    true,
+		"templates": true,
+		"pages":     true,
+		"scenarios": true,
+		"smtp":      true,
+	}
+	if !allowedTables[item] {
+		return false, errors.New("invalid table name")
+	}
 
 	uid := UserId{}
 

@@ -68,7 +68,7 @@ func (as *Server) registerRoutes() {
 	router.HandleFunc("/campaigns/{id:[0-9]+}/summary", mid.Use(as.CampaignSummary, mid.EnforceTeamViewOnly("campaigns")))
 	router.HandleFunc("/campaigns/{id:[0-9]+}/complete", mid.Use(as.CampaignComplete, mid.EnforceTeamViewOnly("campaigns")))
 	router.HandleFunc("/users/{id:[0-9]+}/teams", as.GetUserTeams)
-	router.HandleFunc("/{item}/{id:[0-9]+}/teams", mid.Use(as.ItemTeams, mid.CanShareItem()))
+	router.HandleFunc("/{item:(?:campaigns|groups|templates|pages|scenarios|smtp)}/{id:[0-9]+}/teams", mid.Use(as.ItemTeams, mid.CanShareItem()))
 	router.HandleFunc("/teams", mid.Use(as.Teams, mid.RequirePermission(models.PermissionModifySystem)))
 	router.HandleFunc("/teams/{id:[0-9]+}", mid.Use(as.Team, mid.RequirePermission(models.PermissionModifySystem)))
 	router.HandleFunc("/groups/", mid.Use(as.Groups, mid.EnforceTeamViewOnly("groups")))
