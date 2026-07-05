@@ -15,17 +15,17 @@ function errorFlashFade(message, fade) {
     $("#flashes").empty()
     $("#flashes").append("<div style=\"text-align:center\" class=\"alert alert-danger\">\
         <i class=\"fa fa-exclamation-circle\"></i> " + message + "</div>")
-    setTimeout(function(){ 
-        $("#flashes").empty() 
+    setTimeout(function(){
+        $("#flashes").empty()
     }, fade * 1000);
 }
 // Fade message after n seconds
-function successFlashFade(message, fade) {  
+function successFlashFade(message, fade) {
     $("#flashes").empty()
     $("#flashes").append("<div style=\"text-align:center\" class=\"alert alert-success\">\
         <i class=\"fa fa-check-circle\"></i> " + message + "</div>")
-    setTimeout(function(){ 
-        $("#flashes").empty() 
+    setTimeout(function(){
+        $("#flashes").empty()
     }, fade * 1000);
 
 }
@@ -59,9 +59,9 @@ function unescapeHtml(html) {
 }
 
 /**
- * 
+ *
  * @param {string} string - The input string to capitalize
- * 
+ *
  */
 var capitalize = function (string) {
     return string.charAt(0).toUpperCase() + string.slice(1);
@@ -161,6 +161,9 @@ var api = {
         // results() - Queries the API for GET /campaigns/:id/results
         results: function (id) {
             return query("/campaigns/" + id + "/results", "GET", {}, true)
+        },
+        scheduleResult: function (id, rid, data) {
+            return query("/campaigns/" + id + "/results/" + rid + "/schedule", "PUT", data, true)
         },
         // complete() - Completes a campaign at POST /campaigns/:id/complete
         complete: function (id) {
@@ -401,4 +404,4 @@ for (i = 0; i < dropdown.length; i++) {
       dropdownContent.style.display = "block";
     }
   });
-} 
+}

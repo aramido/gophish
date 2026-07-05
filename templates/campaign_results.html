@@ -65,26 +65,163 @@
             </div>
         </div>
         <div class="row">
-            <h2>Details</h2>
-            <table id="resultsTable" class="table">
-                <thead>
-                    <tr>
-                        <th>Result ID</th>
-                        <th class="no-sort"></th>
-                        <th>First Name</th>
-                        <th>Last Name</th>
-                        <th>Email</th>
-                        <th>Position</th>
-                        <th>Status</th>
-                        <th class="text-center">Reported</th>
-                    </tr>
-                </thead>
-                <tbody>
-                </tbody>
-            </table>
+            <ul class="nav nav-tabs" role="tablist">
+                <li role="presentation" class="active"><a href="#details_tab" aria-controls="details_tab" role="tab" data-toggle="tab">Details</a></li>
+                <li role="presentation"><a href="#schedule_tab" aria-controls="schedule_tab" role="tab" data-toggle="tab">Schedule</a></li>
+            </ul>
+            <div class="tab-content">
+                <div role="tabpanel" class="tab-pane active" id="details_tab">
+                    <h2>Details</h2>
+                    <table id="resultsTable" class="table">
+                        <thead>
+                            <tr>
+                                <th>Result ID</th>
+                                <th class="no-sort"></th>
+                                <th>First Name</th>
+                                <th>Last Name</th>
+                                <th>Email</th>
+                                <th>Position</th>
+                                <th>Status</th>
+                                <th class="text-center">Reported</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+                <div role="tabpanel" class="tab-pane" id="schedule_tab">
+                    <h2>Schedule</h2>
+                    <div class="row">
+                        <div class="col-sm-2">
+                            <h5>Next Send</h5>
+                            <p id="schedule_next_send">-</p>
+                        </div>
+                        <div class="col-sm-2">
+                            <h5>Today</h5>
+                            <p id="schedule_today">0</p>
+                        </div>
+                        <div class="col-sm-2">
+                            <h5>This Week</h5>
+                            <p id="schedule_this_week">0</p>
+                        </div>
+                        <div class="col-sm-2">
+                            <h5>Total Scheduled</h5>
+                            <p id="schedule_total">0</p>
+                        </div>
+                        <div class="col-sm-4">
+                            <h5>Busiest Day</h5>
+                            <p id="schedule_busiest_day">-</p>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-sm-3">
+                            <input id="schedule_filter_recipient" class="form-control" placeholder="Recipient">
+                        </div>
+                        <div class="col-sm-3">
+                            <select id="schedule_filter_scenario" class="form-control">
+                                <option value="">All scenarios</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-3">
+                            <select id="schedule_filter_template" class="form-control">
+                                <option value="">All templates</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-3 text-right">
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-default" onclick="openBulkOffsetModal()" data-toggle="tooltip" title="Move selected">
+                                    <i class="fa fa-clock-o"></i>
+                                </button>
+                                <button type="button" class="btn btn-default" onclick="openBulkSetModal()" data-toggle="tooltip" title="Set selected">
+                                    <i class="fa fa-calendar"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <br />
+                    <table id="scheduleTable" class="table table-striped table-condensed">
+                        <thead>
+                            <tr>
+                                <th class="no-sort"><input type="checkbox" id="schedule_select_all"></th>
+                                <th>Send Date</th>
+                                <th>Recipient</th>
+                                <th>Scenario</th>
+                                <th>Template</th>
+                                <th>Status</th>
+                                <th class="no-sort text-right">Actions</th>
+                                <th>Result ID</th>
+                                <th>Raw Send Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
     <div id="flashes" class="row"></div>
+</div>
+<div class="modal fade" id="scheduleEditModal" tabindex="-1" role="dialog" aria-labelledby="scheduleEditModalLabel">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title" id="scheduleEditModalLabel">Edit Send Time</h4>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="schedule_edit_rid">
+                <div class="form-group">
+                    <label for="schedule_edit_send_date">Send Date</label>
+                    <input type="datetime-local" class="form-control" id="schedule_edit_send_date">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveScheduleEdit()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="scheduleBulkOffsetModal" tabindex="-1" role="dialog" aria-labelledby="scheduleBulkOffsetModalLabel">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title" id="scheduleBulkOffsetModalLabel">Move Selected</h4>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="schedule_bulk_offset_minutes">Minutes</label>
+                    <input type="number" class="form-control" id="schedule_bulk_offset_minutes" value="60">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveBulkOffset()">Move</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="scheduleBulkSetModal" tabindex="-1" role="dialog" aria-labelledby="scheduleBulkSetModalLabel">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title" id="scheduleBulkSetModalLabel">Set Selected</h4>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="schedule_bulk_set_send_date">Send Date</label>
+                    <input type="datetime-local" class="form-control" id="schedule_bulk_set_send_date">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveBulkSet()">Set</button>
+            </div>
+        </div>
+    </div>
 </div>
 {{end}} {{define "scripts"}}
 <script src="/js/dist/app/campaign_results.min.js"></script>

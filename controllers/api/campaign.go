@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	ctx "github.com/gophish/gophish/context"
 	log "github.com/gophish/gophish/logger"
@@ -11,6 +12,10 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jinzhu/gorm"
 )
+
+type campaignResultScheduleRequest struct {
+	SendDate time.Time `json:"send_date"`
+}
 
 // Campaigns returns a list of campaigns if requested via GET.
 // If requested via POST, APICampaigns creates a new campaign and returns a reference to it.
@@ -105,6 +110,39 @@ func (as *Server) CampaignResults(w http.ResponseWriter, r *http.Request) {
 		JSONResponse(w, cr, http.StatusOK)
 		return
 	}
+}
+
+// CampaignResultSchedule changes the queued send date for a scheduled campaign result.
+func (as *Server) CampaignResultSchedule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "PUT" {
+		JSONResponse(w, models.Response{Success: false, Message: "Method not allowed"}, http.StatusMethodNotAllowed)
+		return
+	}
+
+	vars := mux.Vars(r)
+	id, _ := strconv.ParseInt(vars["id"], 0, 64)
+	body := campaignResultScheduleRequest{}
+	err := json.NewDecoder(r.Body).Decode(&body)
+	if err != nil || body.SendDate.IsZero() {
+		JSONResponse(w, models.Response{Success: false, Message: "Invalid JSON structure"}, http.StatusBadRequest)
+		return
+	}
+
+	result, err := models.UpdateResultSchedule(id, ctx.Get(r, "user_id").(int64), vars["rid"], body.SendDate)
+	if err != nil {
+		log.Error(err)
+		switch err {
+		case gorm.ErrRecordNotFound:
+			JSONResponse(w, models.Response{Success: false, Message: "Campaign result not found"}, http.StatusNotFound)
+		case models.ErrResultScheduleLocked, models.ErrInvalidResultSendDate:
+			JSONResponse(w, models.Response{Success: false, Message: err.Error()}, http.StatusBadRequest)
+		default:
+			JSONResponse(w, models.Response{Success: false, Message: err.Error()}, http.StatusInternalServerError)
+		}
+		return
+	}
+
+	JSONResponse(w, result, http.StatusOK)
 }
 
 // CampaignSummary returns the summary for a given campaign.

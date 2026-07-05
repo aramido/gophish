@@ -360,6 +360,90 @@ func (s *ModelsSuite) TestCampaignSchedulesEveryTemplateInSingleScenario(c *chec
 	assertMailLogsMirrorResults(c, stored, stored.Results)
 }
 
+func (s *ModelsSuite) TestUpdateResultScheduleUpdatesResultAndMailLog(c *check.C) {
+	campaign := s.createSchedulingCampaign(c, []int{1}, []Target{
+		{BaseRecipient: BaseRecipient{Email: "edit@example.com", FirstName: "Edit", LastName: "Schedule"}},
+	})
+	loc := time.UTC
+	launch := time.Date(2030, time.January, 7, 9, 0, 0, 0, loc)
+	sendBy := time.Date(2030, time.January, 9, 17, 0, 0, 0, loc)
+	setCampaignWorkingWindow(&campaign, loc, launch, sendBy)
+
+	err := PostCampaign(&campaign, campaign.UserId)
+	c.Assert(err, check.Equals, nil)
+
+	stored, err := GetCampaign(campaign.Id, campaign.UserId)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(len(stored.Results), check.Equals, 1)
+
+	newSendDate := time.Date(2030, time.January, 8, 11, 30, 0, 0, loc)
+	updated, err := UpdateResultSchedule(stored.Id, stored.UserId, stored.Results[0].RId, newSendDate)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(updated.SendDate.Equal(newSendDate), check.Equals, true)
+
+	result, err := GetResult(stored.Results[0].RId)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(result.SendDate.Equal(newSendDate), check.Equals, true)
+
+	ms, err := GetMailLogsByCampaign(stored.Id)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(len(ms), check.Equals, 1)
+	c.Assert(ms[0].SendDate.Equal(newSendDate), check.Equals, true)
+	c.Assert(ms[0].Processing, check.Equals, false)
+}
+
+func (s *ModelsSuite) TestUpdateResultScheduleRejectsLockedResult(c *check.C) {
+	campaign := s.createSchedulingCampaign(c, []int{1}, []Target{
+		{BaseRecipient: BaseRecipient{Email: "locked@example.com", FirstName: "Locked", LastName: "Schedule"}},
+	})
+	loc := time.UTC
+	launch := time.Date(2030, time.January, 7, 9, 0, 0, 0, loc)
+	sendBy := time.Date(2030, time.January, 9, 17, 0, 0, 0, loc)
+	setCampaignWorkingWindow(&campaign, loc, launch, sendBy)
+
+	err := PostCampaign(&campaign, campaign.UserId)
+	c.Assert(err, check.Equals, nil)
+
+	stored, err := GetCampaign(campaign.Id, campaign.UserId)
+	c.Assert(err, check.Equals, nil)
+	result := stored.Results[0]
+	originalSendDate := result.SendDate
+	result.Status = EventSent
+	c.Assert(db.Save(&result).Error, check.Equals, nil)
+
+	_, err = UpdateResultSchedule(stored.Id, stored.UserId, result.RId, time.Date(2030, time.January, 8, 11, 30, 0, 0, loc))
+	c.Assert(err, check.Equals, ErrResultScheduleLocked)
+
+	unchanged, err := GetResult(result.RId)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(unchanged.SendDate.Equal(originalSendDate), check.Equals, true)
+}
+
+func (s *ModelsSuite) TestUpdateResultScheduleRejectsInvalidWorkingTime(c *check.C) {
+	campaign := s.createSchedulingCampaign(c, []int{1}, []Target{
+		{BaseRecipient: BaseRecipient{Email: "invalidtime@example.com", FirstName: "Invalid", LastName: "Time"}},
+	})
+	loc := time.UTC
+	launch := time.Date(2030, time.January, 7, 9, 0, 0, 0, loc)
+	sendBy := time.Date(2030, time.January, 9, 17, 0, 0, 0, loc)
+	setCampaignWorkingWindow(&campaign, loc, launch, sendBy)
+
+	err := PostCampaign(&campaign, campaign.UserId)
+	c.Assert(err, check.Equals, nil)
+
+	stored, err := GetCampaign(campaign.Id, campaign.UserId)
+	c.Assert(err, check.Equals, nil)
+	result := stored.Results[0]
+	originalSendDate := result.SendDate
+
+	_, err = UpdateResultSchedule(stored.Id, stored.UserId, result.RId, time.Date(2030, time.January, 12, 11, 30, 0, 0, loc))
+	c.Assert(err, check.Equals, ErrInvalidResultSendDate)
+
+	unchanged, err := GetResult(result.RId)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(unchanged.SendDate.Equal(originalSendDate), check.Equals, true)
+}
+
 func (s *ModelsSuite) TestGenerateSendDate(c *check.C) {
 	campaign := s.createCampaignDependencies(c)
 	// Test that if no launch date is provided, the campaign's creation date

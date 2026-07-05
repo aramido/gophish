@@ -172,6 +172,13 @@ var ErrInvalidSendByDate = errors.New("The launch date must be before the \"send
 // ErrNoWorkingDays indicates that there are no working days in the given timeframe
 var ErrNoWorkingDays = errors.New("There are no working days in the given timeframe")
 
+// ErrResultScheduleLocked indicates that a result can no longer be rescheduled.
+var ErrResultScheduleLocked = errors.New("Result can no longer be rescheduled")
+
+// ErrInvalidResultSendDate indicates that the requested result send date does not fit
+// the campaign's scheduling window.
+var ErrInvalidResultSendDate = errors.New("Send date is outside the campaign scheduling window")
+
 // RecipientParameter is the URL parameter that points to the result ID for a recipient.
 const RecipientParameter = "rid"
 
@@ -413,6 +420,82 @@ func (c *Campaign) generateTimeSlots(totalRecipients int) []time.Time {
 		return []time.Time{}
 	}
 	return timeSlots
+}
+
+func (c *Campaign) canScheduleAt(sendDate time.Time) bool {
+	if sendDate.Before(c.LaunchDate) {
+		return false
+	}
+	if !c.SendByDate.IsZero() && sendDate.After(c.SendByDate) {
+		return false
+	}
+
+	location := c.resolveLoc()
+	local := sendDate.In(location)
+	if local.Weekday() == time.Saturday || local.Weekday() == time.Sunday {
+		return false
+	}
+
+	start, end := c.workingWindowForDate(local, location)
+	return !local.Before(start) && !local.After(end)
+}
+
+// UpdateResultSchedule changes the queued send time for a single scheduled or
+// retrying result. Both the result and its mail log are updated in one transaction
+// so the UI and worker always agree on the next send time.
+func UpdateResultSchedule(campaignID int64, uid int64, rid string, sendDate time.Time) (Result, error) {
+	result := Result{}
+	campaign, err := GetCampaign(campaignID, uid)
+	if err != nil {
+		return result, err
+	}
+	if campaign.Status == CampaignComplete {
+		return result, ErrResultScheduleLocked
+	}
+	if !campaign.canScheduleAt(sendDate) {
+		return result, ErrInvalidResultSendDate
+	}
+
+	tx := db.Begin()
+	if tx.Error != nil {
+		return result, tx.Error
+	}
+
+	err = tx.Where("campaign_id = ? AND user_id = ? AND r_id = ?", campaignID, campaign.UserId, rid).First(&result).Error
+	if err != nil {
+		tx.Rollback()
+		return result, err
+	}
+	if result.Status != StatusScheduled && result.Status != StatusRetry {
+		tx.Rollback()
+		return result, ErrResultScheduleLocked
+	}
+
+	mailLog := MailLog{}
+	err = tx.Where("campaign_id = ? AND user_id = ? AND r_id = ?", campaignID, campaign.UserId, rid).First(&mailLog).Error
+	if err != nil {
+		tx.Rollback()
+		return result, err
+	}
+
+	result.SendDate = sendDate.UTC()
+	result.ModifiedDate = time.Now().UTC()
+	err = tx.Save(&result).Error
+	if err != nil {
+		tx.Rollback()
+		return result, err
+	}
+
+	mailLog.SendDate = result.SendDate
+	mailLog.Processing = false
+	err = tx.Save(&mailLog).Error
+	if err != nil {
+		tx.Rollback()
+		return result, err
+	}
+
+	err = tx.Commit().Error
+	return result, err
 }
 
 // getCampaignStats returns a CampaignStats object for the campaign with the given campaign ID.

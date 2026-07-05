@@ -65,6 +65,7 @@ func (as *Server) registerRoutes() {
 	router.HandleFunc("/campaigns/summary", mid.Use(as.CampaignsSummary, mid.EnforceTeamViewOnly("campaigns")))
 	router.HandleFunc("/campaigns/{id:[0-9]+}", mid.Use(as.Campaign, mid.EnforceTeamViewOnly("campaigns")))
 	router.HandleFunc("/campaigns/{id:[0-9]+}/results", mid.Use(as.CampaignResults, mid.EnforceTeamViewOnly("campaigns")))
+	router.HandleFunc("/campaigns/{id:[0-9]+}/results/{rid:[A-Za-z0-9]+}/schedule", mid.Use(as.CampaignResultSchedule, mid.EnforceTeamViewOnly("campaigns")))
 	router.HandleFunc("/campaigns/{id:[0-9]+}/summary", mid.Use(as.CampaignSummary, mid.EnforceTeamViewOnly("campaigns")))
 	router.HandleFunc("/campaigns/{id:[0-9]+}/complete", mid.Use(as.CampaignComplete, mid.EnforceTeamViewOnly("campaigns")))
 	router.HandleFunc("/users/{id:[0-9]+}/teams", as.GetUserTeams)

@@ -116,6 +116,11 @@ var progressListing = [
 
 var campaign = {}
 var bubbles = []
+var scheduleTable = null
+var scheduleMetadata = {
+    scenarios: {},
+    templates: {}
+}
 
 function dismiss() {
     $("#modal\\.flashes").empty()
@@ -299,10 +304,10 @@ function replay(event_idx) {
 /**
  * Returns an HTML string that displays the OS and browser that clicked the link
  * or submitted credentials.
- * 
+ *
  * @param {object} event_details - The "details" parameter for a campaign
  *  timeline event
- * 
+ *
  */
 var renderDevice = function (event_details) {
     var ua = UAParser(details.browser['user-agent'])
@@ -613,8 +618,8 @@ var updateMap = function (results) {
 
 /**
  * Creates a status label for use in the results datatable
- * @param {string} status 
- * @param {moment(datetime)} send_date 
+ * @param {string} status
+ * @param {moment(datetime)} send_date
  */
 function createStatusLabel(status, send_date) {
     var label = statuses[status].label || "label-default";
@@ -625,6 +630,318 @@ function createStatusLabel(status, send_date) {
         statusColumn = "<span class=\"label " + label + "\" data-toggle=\"tooltip\" data-placement=\"top\" data-html=\"true\" title=\"" + sendDateMessage + "\">" + status + "</span>"
     }
     return statusColumn
+}
+
+function isScheduleEditable(result) {
+    return result.status == "Scheduled" || result.status == "Retrying"
+}
+
+function buildScheduleMetadata(c) {
+    scheduleMetadata = {
+        scenarios: {},
+        templates: {}
+    }
+    $("#schedule_filter_scenario").find("option:not(:first)").remove()
+    $("#schedule_filter_template").find("option:not(:first)").remove()
+    $.each(c.scenarios || [], function (i, scenario) {
+        scheduleMetadata.scenarios[scenario.id] = scenario.name
+        $("#schedule_filter_scenario").append($("<option>").val(scenario.id).text(scenario.name))
+        $.each(scenario.templates || [], function (j, template) {
+            scheduleMetadata.templates[template.id] = template.name
+            $("#schedule_filter_template").append($("<option>").val(template.id).text(template.name))
+        })
+    })
+}
+
+function getScenarioName(result) {
+    return scheduleMetadata.scenarios[result.scenario_id] || ("Scenario " + result.scenario_id)
+}
+
+function getTemplateName(result) {
+    return scheduleMetadata.templates[result.template_id] || ("Template " + result.template_id)
+}
+
+function recipientName(result) {
+    var name = $.trim((result.first_name || "") + " " + (result.last_name || ""))
+    if (name.length > 0) {
+        return name + " <" + result.email + ">"
+    }
+    return result.email
+}
+
+function toLocalDateTimeInputValue(date) {
+    return moment(date).local().format("YYYY-MM-DDTHH:mm")
+}
+
+function scheduleRequestDate(value) {
+    return moment(value).utc().format()
+}
+
+function selectedScheduleRows() {
+    var rows = []
+    $(".schedule-select:checked").each(function () {
+        var rid = $(this).data("rid")
+        var result = findResult(rid)
+        if (result && isScheduleEditable(result)) {
+            rows.push(result)
+        }
+    })
+    return rows
+}
+
+function findResult(rid) {
+    var found = null
+    $.each(campaign.results || [], function (i, result) {
+        if (result.id == rid) {
+            found = result
+            return false
+        }
+    })
+    return found
+}
+
+function updateResultInCampaign(updated) {
+    $.each(campaign.results || [], function (i, result) {
+        if (result.id == updated.id) {
+            campaign.results[i] = updated
+            return false
+        }
+    })
+}
+
+function updateResultsTableRow(updated) {
+    var table = $("#resultsTable").DataTable()
+    table.rows().every(function (i) {
+        var row = this.row(i)
+        var rowData = row.data()
+        if (rowData[0] == updated.id) {
+            rowData[8] = moment(updated.send_date).format('MMMM Do YYYY, h:mm:ss a')
+            rowData[7] = updated.reported
+            rowData[6] = updated.status
+            table.row(i).data(rowData)
+            return false
+        }
+    })
+    table.draw(false)
+}
+
+function scheduleActionButton(result) {
+    if (!isScheduleEditable(result)) {
+        return "<button class=\"btn btn-default btn-xs\" disabled><i class=\"fa fa-lock\"></i></button>"
+    }
+    return "<button class=\"btn btn-primary btn-xs\" onclick=\"openScheduleEdit('" + result.id + "')\" data-toggle=\"tooltip\" title=\"Edit send time\"><i class=\"fa fa-pencil\"></i></button>"
+}
+
+function renderScheduleSummary(results) {
+    var scheduled = []
+    var dayCounts = {}
+    var now = moment()
+    var startOfWeek = moment().startOf("week")
+    var endOfWeek = moment().endOf("week")
+    var todayCount = 0
+    var weekCount = 0
+
+    $.each(results, function (i, result) {
+        if (!isScheduleEditable(result)) {
+            return true
+        }
+        var sendDate = moment(result.send_date)
+        scheduled.push(sendDate)
+        if (sendDate.isSame(now, "day")) {
+            todayCount++
+        }
+        if (sendDate.isBetween(startOfWeek, endOfWeek, null, "[]")) {
+            weekCount++
+        }
+        var dayKey = sendDate.format("YYYY-MM-DD")
+        dayCounts[dayKey] = (dayCounts[dayKey] || 0) + 1
+    })
+
+    scheduled.sort(function (a, b) {
+        return a.valueOf() - b.valueOf()
+    })
+
+    var nextSend = "-"
+    $.each(scheduled, function (i, sendDate) {
+        if (sendDate.isSameOrAfter(now)) {
+            nextSend = sendDate.format("MMM D, YYYY h:mm a")
+            return false
+        }
+    })
+
+    var busiestDay = "-"
+    var busiestCount = 0
+    $.each(dayCounts, function (day, count) {
+        if (count > busiestCount) {
+            busiestCount = count
+            busiestDay = moment(day).format("MMM D, YYYY") + " (" + count + ")"
+        }
+    })
+
+    $("#schedule_next_send").text(nextSend)
+    $("#schedule_today").text(todayCount)
+    $("#schedule_this_week").text(weekCount)
+    $("#schedule_total").text(scheduled.length)
+    $("#schedule_busiest_day").text(busiestDay)
+}
+
+function renderScheduleTable() {
+    if (!scheduleTable) {
+        return
+    }
+    var rows = []
+    $.each(campaign.results || [], function (i, result) {
+        var editable = isScheduleEditable(result)
+        rows.push([
+            editable ? "<input type=\"checkbox\" class=\"schedule-select\" data-rid=\"" + result.id + "\">" : "",
+            moment(result.send_date).format("MMMM Do YYYY, h:mm:ss a"),
+            escapeHtml(recipientName(result)),
+            escapeHtml(getScenarioName(result)),
+            escapeHtml(getTemplateName(result)),
+            createStatusLabel(result.status, moment(result.send_date).format("MMMM Do YYYY, h:mm:ss a")),
+            "<div class=\"text-right\">" + scheduleActionButton(result) + "</div>",
+            result.id,
+            result.send_date
+        ])
+    })
+    scheduleTable.clear()
+    scheduleTable.rows.add(rows)
+    scheduleTable.draw()
+    renderScheduleSummary(campaign.results || [])
+    $('[data-toggle="tooltip"]').tooltip()
+}
+
+function applyScheduleFilters() {
+    if (!scheduleTable) {
+        return
+    }
+    var recipientFilter = $("#schedule_filter_recipient").val()
+    var scenarioFilter = $("#schedule_filter_scenario").val()
+    var templateFilter = $("#schedule_filter_template").val()
+    scheduleTable.column(2).search(recipientFilter || "")
+    scheduleTable.column(3).search(scenarioFilter ? "^" + $.fn.dataTable.util.escapeRegex(scheduleMetadata.scenarios[scenarioFilter]) + "$" : "", true, false)
+    scheduleTable.column(4).search(templateFilter ? "^" + $.fn.dataTable.util.escapeRegex(scheduleMetadata.templates[templateFilter]) + "$" : "", true, false)
+    scheduleTable.draw()
+}
+
+function openScheduleEdit(rid) {
+    var result = findResult(rid)
+    if (!result) {
+        errorFlash("Schedule result not found")
+        return
+    }
+    $("#schedule_edit_rid").val(result.id)
+    $("#schedule_edit_send_date").val(toLocalDateTimeInputValue(result.send_date))
+    $("#scheduleEditModal").modal("show")
+}
+
+function saveScheduleEdit() {
+    var rid = $("#schedule_edit_rid").val()
+    var sendDate = $("#schedule_edit_send_date").val()
+    if (!sendDate) {
+        errorFlash("Select a send date")
+        return
+    }
+    saveScheduleChange(rid, scheduleRequestDate(sendDate))
+        .success(function () {
+            $("#scheduleEditModal").modal("hide")
+        })
+}
+
+function saveScheduleChange(rid, sendDate) {
+    return api.campaignId.scheduleResult(campaign.id, rid, { send_date: sendDate })
+        .success(function (result) {
+            updateResultInCampaign(result)
+            updateResultsTableRow(result)
+            renderScheduleTable()
+            successFlashFade("Schedule updated", 3)
+        })
+        .error(function (data) {
+            var message = "Error updating schedule"
+            if (data.responseJSON && data.responseJSON.message) {
+                message = data.responseJSON.message
+            }
+            errorFlash(message)
+        })
+}
+
+function openBulkOffsetModal() {
+    if (selectedScheduleRows().length == 0) {
+        errorFlash("Select scheduled emails first")
+        return
+    }
+    $("#scheduleBulkOffsetModal").modal("show")
+}
+
+function openBulkSetModal() {
+    if (selectedScheduleRows().length == 0) {
+        errorFlash("Select scheduled emails first")
+        return
+    }
+    $("#schedule_bulk_set_send_date").val(toLocalDateTimeInputValue(selectedScheduleRows()[0].send_date))
+    $("#scheduleBulkSetModal").modal("show")
+}
+
+function saveBulkOffset() {
+    var minutes = parseInt($("#schedule_bulk_offset_minutes").val(), 10)
+    if (isNaN(minutes)) {
+        errorFlash("Enter a minute offset")
+        return
+    }
+    var changes = $.map(selectedScheduleRows(), function (result) {
+        return {
+            rid: result.id,
+            sendDate: moment(result.send_date).add(minutes, "minutes").utc().format()
+        }
+    })
+    saveBulkScheduleChanges(changes, "#scheduleBulkOffsetModal")
+}
+
+function saveBulkSet() {
+    var sendDate = $("#schedule_bulk_set_send_date").val()
+    if (!sendDate) {
+        errorFlash("Select a send date")
+        return
+    }
+    var changes = $.map(selectedScheduleRows(), function (result) {
+        return {
+            rid: result.id,
+            sendDate: scheduleRequestDate(sendDate)
+        }
+    })
+    saveBulkScheduleChanges(changes, "#scheduleBulkSetModal")
+}
+
+function saveBulkScheduleChanges(changes, modalSelector) {
+    var failures = []
+    var requests = $.map(changes, function (change) {
+        var deferred = $.Deferred()
+        api.campaignId.scheduleResult(campaign.id, change.rid, { send_date: change.sendDate })
+            .success(function (result) {
+                updateResultInCampaign(result)
+                updateResultsTableRow(result)
+                deferred.resolve()
+            })
+            .error(function (data) {
+                var message = "Error updating " + change.rid
+                if (data.responseJSON && data.responseJSON.message) {
+                    message = data.responseJSON.message
+                }
+                failures.push(message)
+                deferred.resolve()
+            })
+        return deferred.promise()
+    })
+
+    $.when.apply($, requests).always(function () {
+        $(modalSelector).modal("hide")
+        renderScheduleTable()
+        if (failures.length > 0) {
+            errorFlash(failures.join("<br>"))
+            return
+        }
+        successFlashFade("Schedule updated", 3)
+    })
 }
 
 /* poll - Queries the API and updates the UI with the results
@@ -716,6 +1033,7 @@ function poll() {
                 })
             })
             resultsTable.draw(false)
+            renderScheduleTable()
             /* Update the map information */
             updateMap(campaign.results)
             $('[data-toggle="tooltip"]').tooltip()
@@ -756,6 +1074,7 @@ function load() {
         .success(function (c) {
                 campaign = c
                 if (campaign) {
+                    buildScheduleMetadata(campaign)
                     $("title").text(c.name + " - Gophish")
                     $("#loading").hide()
                     $("#campaignResults").show()
@@ -818,6 +1137,26 @@ function load() {
                             }
                         ]
                     });
+                    scheduleTable = $("#scheduleTable").DataTable({
+                        destroy: true,
+                        "order": [
+                            [1, "asc"]
+                        ],
+                        columnDefs: [{
+                                orderable: false,
+                                targets: "no-sort"
+                            }, {
+                                "visible": false,
+                                "targets": [7, 8]
+                            }
+                        ]
+                    })
+                    $("#schedule_filter_recipient").on("keyup change", applyScheduleFilters)
+                    $("#schedule_filter_scenario").on("change", applyScheduleFilters)
+                    $("#schedule_filter_template").on("change", applyScheduleFilters)
+                    $("#schedule_select_all").on("change", function () {
+                        $(".schedule-select").prop("checked", $(this).prop("checked"))
+                    })
                     resultsTable.clear();
                     var email_series_data = {}
                     var timeline_series_data = []
@@ -847,6 +1186,7 @@ function load() {
                         }
                     })
                     resultsTable.draw();
+                    renderScheduleTable()
                     // Setup tooltips
                     $('[data-toggle="tooltip"]').tooltip()
                     // Setup the individual timelines
@@ -966,7 +1306,7 @@ function report_mail(rid, cid) {
             api.campaignId.get(cid).success((function(c) {
                 report_url = new URL(c.url)
                 report_url.pathname = '/report'
-                report_url.search = "?rid=" + rid 
+                report_url.search = "?rid=" + rid
                 fetch(report_url)
                 .then(response => {
                     if (!response.ok) {
