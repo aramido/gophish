@@ -61,7 +61,7 @@ func (s *ModelsSuite) TestResultScheduledStatus(ch *check.C) {
 
 func (s *ModelsSuite) TestResultVariableStatus(ch *check.C) {
 	c := s.createCampaignDependencies(ch)
-	c.LaunchDate = time.Now().UTC()
+	c.LaunchDate = time.Date(2030, time.January, 7, 10, 0, 0, 0, time.UTC)
 	c.SendByDate = c.LaunchDate.Add(2 * time.Minute)
 	ch.Assert(PostCampaign(&c, c.UserId), check.Equals, nil)
 

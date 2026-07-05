@@ -397,7 +397,7 @@ func (s *ModelsSuite) TestGenerateSendDate(c *check.C) {
 	// Finally, test that if a send date is provided, the emails are staggered
 	// correctly.
 	campaign = s.createCampaignDependencies(c)
-	campaign.LaunchDate = time.Now().UTC()
+	campaign.LaunchDate = time.Date(2030, time.January, 7, 10, 0, 0, 0, time.UTC)
 	campaign.SendByDate = campaign.LaunchDate.Add(2 * time.Minute)
 	err = PostCampaign(&campaign, campaign.UserId)
 	c.Assert(err, check.Equals, nil)
