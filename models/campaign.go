@@ -2,10 +2,9 @@ package models
 
 import (
 	"errors"
-	"math"
 	"math/rand"
 	"net/url"
-	"sort"
+	"strings"
 	"time"
 
 	log "github.com/gophish/gophish/logger"
@@ -129,6 +128,11 @@ type Assignment struct {
 type Recipient struct {
 	Recipient   Target
 	Assignments []Assignment
+}
+
+type workingInterval struct {
+	start time.Time
+	end   time.Time
 }
 
 // ErrCampaignNameNotSpecified indicates there was no template given by the user
@@ -277,14 +281,6 @@ func (c *CampaignMailContext) getFromAddress() string {
 	return c.SMTP.FromAddress
 }
 
-func (c *Campaign) assignSendDate(idx int, timeSlots []time.Time) time.Time {
-	if c.SendByDate.IsZero() {
-		return c.LaunchDate
-	}
-	// Using the idx of the recipient we can assign the timeSlot
-	return timeSlots[idx]
-}
-
 // helper function for time location
 func (c *Campaign) resolveLoc() *time.Location {
 	if c.Location != "" {
@@ -295,90 +291,127 @@ func (c *Campaign) resolveLoc() *time.Location {
 	return time.UTC
 }
 
-// Generates timeSlots. When timeSlots are generated the startHour and endHour defined at Campaign creation is ignored, but instead only whole days between 9 to 5 are regarded.
-func (c *Campaign) generateTimeSlots(totalRecipients int) []time.Time {
+func (c *Campaign) recipientAssignments() []Assignment {
+	assignments := []Assignment{}
+	for _, scenario := range c.Scenarios {
+		for _, template := range scenario.Templates {
+			assignments = append(assignments, Assignment{Scenario: scenario, Template: template})
+		}
+	}
+	return assignments
+}
+
+func normalizeRecipientEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func (c *Campaign) campaignRecipients() []Target {
+	seen := make(map[string]bool)
+	recipients := []Target{}
+	for _, group := range c.Groups {
+		for _, target := range group.Targets {
+			key := normalizeRecipientEmail(target.Email)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = true
+			recipients = append(recipients, target)
+		}
+	}
+	return recipients
+}
+
+func (c *Campaign) workingWindowForDate(date time.Time, location *time.Location) (time.Time, time.Time) {
+	startClock := c.StartTime.In(location)
+	endClock := c.EndTime.In(location)
+	start := time.Date(date.Year(), date.Month(), date.Day(), startClock.Hour(), startClock.Minute(), startClock.Second(), startClock.Nanosecond(), location)
+	end := time.Date(date.Year(), date.Month(), date.Day(), endClock.Hour(), endClock.Minute(), endClock.Second(), endClock.Nanosecond(), location)
+	return start, end
+}
+
+func (c *Campaign) recipientWorkingIntervals(timelineStart time.Time) ([]workingInterval, time.Duration) {
 	location := c.resolveLoc()
-	// For future proofing i added the startDate and endDate. Should they change the parameter c.LaunchDate or c.SendByDate we only need to edit it here.
-	startDate := time.Date(c.LaunchDate.Year(), c.LaunchDate.Month(), c.LaunchDate.Day(), 0, 0, 0, 0, location)
-	endDate := time.Date(c.SendByDate.Year(), c.SendByDate.Month(), c.SendByDate.Day(), 0, 0, 0, 0, location)
-	// Calculate the duration of each day in which we can send Emails
-	durationPerDay := c.EndTime.Sub(c.StartTime)
+	timelineStart = timelineStart.In(location)
+	sendByDate := c.SendByDate.In(location)
+	startDate := time.Date(timelineStart.Year(), timelineStart.Month(), timelineStart.Day(), 0, 0, 0, 0, location)
+	endDate := time.Date(sendByDate.Year(), sendByDate.Month(), sendByDate.Day(), 0, 0, 0, 0, location)
 
-	weekendDays := 0
-	var weekdaysList []time.Time
-	var timeSlots []time.Time
-
-	// Check which days in the given Timeframe are Workdays
+	intervals := []workingInterval{}
+	totalWorkingTime := time.Duration(0)
 	for date := startDate; !date.After(endDate); date = date.AddDate(0, 0, 1) {
 		weekday := date.Weekday()
 		if weekday == time.Saturday || weekday == time.Sunday {
-			weekendDays++
-		} else {
-			weekdaysList = append(weekdaysList, date)
+			continue
 		}
-	}
-
-	// If the given Timeframe has no workdays the empty timeSlots slice gets returned.
-	if len(weekdaysList) < 1 {
-		return timeSlots
-	}
-
-	// Calculate the number of recipients per day
-	recipientsPerDate := totalRecipients / len(weekdaysList)
-	remainingRecipients := totalRecipients % len(weekdaysList)
-
-	// Create a dictionary to store the recipients count for each date
-	recipientsCountByDate := make(map[time.Time]int)
-
-	// Assign the even number of recipients to each date
-	for _, date := range weekdaysList {
-		recipientsCountByDate[date] = recipientsPerDate
-	}
-
-	currentWeekday := 0
-	// Assign the remaining recipients to the first few dates
-	if remainingRecipients >= 1 {
-		dateOffset := int(math.Max(1, float64(len(weekdaysList)/remainingRecipients)))
-
-		for i := 0; i < remainingRecipients; i++ {
-			recipientsCountByDate[weekdaysList[currentWeekday]] += 1
-			currentWeekday += dateOffset
+		intervalStart, intervalEnd := c.workingWindowForDate(date, location)
+		if !intervalEnd.After(intervalStart) {
+			continue
 		}
-	}
-
-	// Create the timeSlots for all days / all recipients
-	for date, count := range recipientsCountByDate {
-		// Set the first time for the day
-		currentTime := date.Add(time.Duration(c.StartTime.Hour()) * time.Hour)
-		endTime := time.Date(currentTime.Year(), currentTime.Month(), currentTime.Day(), c.EndTime.Hour(), 0, 0, 0, location)
-
-		// Calculate the offset between each recipients in seconds
-		offset := float64(durationPerDay) / float64(count) // offset as float in h
-		timeBetweenRecipients := time.Duration(offset)
-
-		// Create the time slots for this day
-		for i := 0; i < count; i++ {
-			// Create a jitter so that Emails get send more random
-			randomDuration := time.Duration(rand.Int63n(int64(timeBetweenRecipients)))
-
-			// Add jitter to currentTime
-			mailTime := currentTime.Add(randomDuration)
-			if mailTime.After(endTime) {
-				// make mailTime maximal endTime
-				mailTime = endTime
-			}
-
-			// Iterate to the next time
-			currentTime = currentTime.Add(timeBetweenRecipients)
-			// Append the timeSlot to the timeSlots list
-			timeSlots = append(timeSlots, mailTime.UTC())
+		if intervalStart.Before(timelineStart) {
+			intervalStart = timelineStart
 		}
+		if intervalEnd.After(sendByDate) {
+			intervalEnd = sendByDate
+		}
+		if !intervalEnd.After(intervalStart) {
+			continue
+		}
+		intervals = append(intervals, workingInterval{start: intervalStart, end: intervalEnd})
+		totalWorkingTime += intervalEnd.Sub(intervalStart)
 	}
-	// Sort timeSlots
-	sort.Slice(timeSlots, func(i, j int) bool {
-		return timeSlots[i].Before(timeSlots[j])
-	})
-	// Return the timeSlots so that they can be used
+	return intervals, totalWorkingTime
+}
+
+func timeAtWorkingOffset(intervals []workingInterval, offset time.Duration) time.Time {
+	for _, interval := range intervals {
+		duration := interval.end.Sub(interval.start)
+		if offset < duration {
+			return interval.start.Add(offset).UTC()
+		}
+		offset -= duration
+	}
+	return intervals[len(intervals)-1].end.UTC()
+}
+
+func (c *Campaign) generateRecipientTimeSlots(timelineStart time.Time, slotCount int) ([]time.Time, error) {
+	if slotCount <= 0 {
+		return []time.Time{}, nil
+	}
+	if c.SendByDate.IsZero() || c.SendByDate.Equal(timelineStart) {
+		timeSlots := make([]time.Time, slotCount)
+		for i := range timeSlots {
+			timeSlots[i] = timelineStart
+		}
+		return timeSlots, nil
+	}
+
+	intervals, totalWorkingTime := c.recipientWorkingIntervals(timelineStart)
+	if len(intervals) == 0 || totalWorkingTime <= 0 {
+		return []time.Time{}, ErrNoWorkingDays
+	}
+
+	timeSlots := make([]time.Time, 0, slotCount)
+	for i := 0; i < slotCount; i++ {
+		sectionStart := totalWorkingTime * time.Duration(i) / time.Duration(slotCount)
+		sectionEnd := totalWorkingTime * time.Duration(i+1) / time.Duration(slotCount)
+		if i == slotCount-1 {
+			sectionEnd = totalWorkingTime
+		}
+
+		offset := sectionStart
+		if sectionDuration := sectionEnd - sectionStart; sectionDuration > 0 {
+			offset += time.Duration(rand.Int63n(int64(sectionDuration)))
+		}
+		timeSlots = append(timeSlots, timeAtWorkingOffset(intervals, offset))
+	}
+	return timeSlots, nil
+}
+
+func (c *Campaign) generateTimeSlots(totalRecipients int) []time.Time {
+	timeSlots, err := c.generateRecipientTimeSlots(c.LaunchDate, totalRecipients)
+	if err != nil {
+		return []time.Time{}
+	}
 	return timeSlots
 }
 
@@ -646,6 +679,95 @@ func GetQueuedCampaigns(t time.Time) ([]Campaign, error) {
 	return cs, err
 }
 
+func (c *Campaign) newScheduledResult(recipient Target, assignment Assignment, sendDate time.Time) *Result {
+	return &Result{
+		BaseRecipient: BaseRecipient{
+			Email:     recipient.Email,
+			Position:  recipient.Position,
+			FirstName: recipient.FirstName,
+			LastName:  recipient.LastName,
+		},
+		Status:       StatusScheduled,
+		CampaignId:   c.Id,
+		UserId:       c.UserId,
+		SendDate:     sendDate,
+		Reported:     false,
+		ModifiedDate: c.CreatedDate,
+		ScenarioId:   assignment.Scenario.Id,
+		TemplateId:   assignment.Template.Id,
+	}
+}
+
+func (c *Campaign) newMailLog(result *Result, processing bool) *MailLog {
+	return &MailLog{
+		UserId:     c.UserId,
+		CampaignId: c.Id,
+		RId:        result.RId,
+		SendDate:   result.SendDate,
+		Processing: processing,
+		ScenarioId: result.ScenarioId,
+		TemplateId: result.TemplateId,
+	}
+}
+
+// scheduleRecipient creates every scenario/template result for a single recipient.
+// It is used during campaign creation and can be reused by a future endpoint that
+// adds recipients to an active campaign without recalculating existing schedules.
+func (c *Campaign) scheduleRecipient(tx *gorm.DB, recipient Target, timelineStart time.Time) ([]Result, error) {
+	assignments := append([]Assignment{}, c.recipientAssignments()...)
+	if len(assignments) == 0 {
+		return []Result{}, nil
+	}
+	rand.Shuffle(len(assignments), func(i, j int) {
+		assignments[i], assignments[j] = assignments[j], assignments[i]
+	})
+
+	timeSlots, err := c.generateRecipientTimeSlots(timelineStart, len(assignments))
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]Result, 0, len(assignments))
+	for i, assignment := range assignments {
+		result := c.newScheduledResult(recipient, assignment, timeSlots[i])
+		err = result.GenerateId(tx)
+		if err != nil {
+			log.Error(err)
+			return nil, err
+		}
+
+		processing := false
+		if result.SendDate.Before(c.CreatedDate) || result.SendDate.Equal(c.CreatedDate) {
+			result.Status = StatusSending
+			processing = true
+		}
+
+		err = tx.Save(result).Error
+		if err != nil {
+			log.WithFields(logrus.Fields{
+				"email": recipient.Email,
+			}).Errorf("error creating result: %v", err)
+			return nil, err
+		}
+		results = append(results, *result)
+
+		log.WithFields(logrus.Fields{
+			"email":     result.Email,
+			"send_date": result.SendDate,
+		}).Debug("creating maillog")
+		mailLog := c.newMailLog(result, processing)
+		err = tx.Save(mailLog).Error
+		if err != nil {
+			log.WithFields(logrus.Fields{
+				"email": recipient.Email,
+			}).Errorf("error creating maillog entry: %v", err)
+			return nil, err
+		}
+	}
+
+	return results, nil
+}
+
 // PostCampaign inserts a campaign and all associated records into the database.
 func PostCampaign(c *Campaign, uid int64) error {
 	err := c.Validate()
@@ -753,119 +875,28 @@ func PostCampaign(c *Campaign, uid int64) error {
 		log.Error(err)
 		return err
 	}
-	// Insert all the results
-	resultMap := make(map[string]bool)
-	recipientList := []Target{}
-	for _, g := range c.Groups {
-		// Insert a result for each target in the group
-		for _, t := range g.Targets {
-			//Remove duplicate results - we should only send emails to unique email addresses.
-			if _, ok := resultMap[t.Email]; ok {
-				continue
-			}
-			resultMap[t.Email] = true
-			recipientList = append(recipientList, t)
+	// Insert all the results, generating a fresh schedule for each recipient.
+	for _, recipient := range c.campaignRecipients() {
+		tx = db.Begin()
+		if tx.Error != nil {
+			log.Error(tx.Error)
+			return tx.Error
 		}
-	}
-	// Create a list of all (recipient, scenario, template) combinations
-	totalTimeSlotsNeeded := 0
-	recipients := make(map[Target]*Recipient)
-	for _, recipient := range recipientList {
-		var assignments []Assignment
-		for _, scenario := range c.Scenarios {
-			for _, template := range scenario.Templates {
-				assignments = append(assignments, Assignment{Scenario: scenario, Template: template})
-				totalTimeSlotsNeeded += 1
-			}
-		}
-		recipients[recipient] = &Recipient{
-			Recipient:   recipient,
-			Assignments: assignments,
-		}
-	}
-
-	// Generate the timeSlots
-	timeSlots := c.generateTimeSlots(totalTimeSlotsNeeded)
-	timeSlotsIndex := 0
-	// Check to make sure enough timeSlots were generated
-	// If timeSlots are smaller than the number of recipients, an error gets thrown
-	if (len(timeSlots) < totalTimeSlotsNeeded) && !(c.SendByDate.IsZero() || c.SendByDate.Equal(c.LaunchDate)) {
-		log.WithFields(logrus.Fields{
-			"timeSlots": len(timeSlots),
-		}).Error("There are no working days in the given timeframe")
-		return ErrNoWorkingDays
-	}
-	for i := 0; i < totalTimeSlotsNeeded/len(recipientList); i++ {
-		for _, recipient := range recipients {
-			// Take a random scenario from the Recipients list of scenarios
-			index := rand.Intn(len(recipient.Assignments))
-			assignment := recipient.Assignments[index]
-			// Remove the scenario for that Recipient
-			recipient.Assignments = append(recipient.Assignments[:index], recipient.Assignments[index+1:]...)
-			tx = db.Begin()
-			// Insert a result for each target in the group
-			sendDate := c.assignSendDate(timeSlotsIndex, timeSlots)
-			r := &Result{
-				BaseRecipient: BaseRecipient{
-					Email:     recipient.Recipient.Email,
-					Position:  recipient.Recipient.Position,
-					FirstName: recipient.Recipient.FirstName,
-					LastName:  recipient.Recipient.LastName,
-				},
-				Status:       StatusScheduled,
-				CampaignId:   c.Id,
-				UserId:       c.UserId,
-				SendDate:     sendDate,
-				Reported:     false,
-				ModifiedDate: c.CreatedDate,
-				ScenarioId:   assignment.Scenario.Id,
-				TemplateId:   assignment.Template.Id,
-			}
-			err = r.GenerateId(tx)
-			if err != nil {
-				log.Error(err)
-				tx.Rollback()
-				return err
-			}
-			processing := false
-			if r.SendDate.Before(c.CreatedDate) || r.SendDate.Equal(c.CreatedDate) {
-				r.Status = StatusSending
-				processing = true
-			}
-			err = tx.Save(r).Error
-
-			if err != nil {
-				log.WithFields(logrus.Fields{
-					"email": recipient.Recipient.Email,
-				}).Errorf("error creating result: %v", err)
-				tx.Rollback()
-				return err
-			}
-			c.Results = append(c.Results, *r)
+		results, err := c.scheduleRecipient(tx, recipient, c.LaunchDate)
+		if err != nil {
+			tx.Rollback()
 			log.WithFields(logrus.Fields{
-				"email":     r.Email,
-				"send_date": sendDate,
-			}).Debug("creating maillog")
-			m := &MailLog{
-				UserId:     c.UserId,
-				CampaignId: c.Id,
-				RId:        r.RId,
-				SendDate:   sendDate,
-				Processing: processing,
-				ScenarioId: assignment.Scenario.Id,
-				TemplateId: assignment.Template.Id,
-			}
-			err = tx.Save(m).Error
-			if err != nil {
-				log.WithFields(logrus.Fields{
-					"email": recipient.Recipient.Email,
-				}).Errorf("error creating maillog entry: %v", err)
-				tx.Rollback()
-				return err
-			}
-			timeSlotsIndex++
-			tx.Commit()
+				"email": recipient.Email,
+			}).Error(err)
+			return err
 		}
+		err = tx.Commit().Error
+		if err != nil {
+			tx.Rollback()
+			log.Error(err)
+			return err
+		}
+		c.Results = append(c.Results, results...)
 	}
 
 	return nil
